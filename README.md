@@ -1,3 +1,13 @@
+---
+title: Financial Intelligence Agent
+emoji: 📈
+colorFrom: indigo
+colorTo: green
+sdk: docker
+app_port: 7860
+pinned: false
+---
+
 # Financial Intelligence Agent
 
 > A production-grade multi-agent RAG system for answering complex financial queries over 100,000+ document chunks from SEC 10-K filings and stock price data.
