@@ -14,7 +14,7 @@ pinned: false
 
 **🚀 Live & Fully Usable Agent**
 
-**[Try the Live Financial Intelligence Agent Now →](https://huggingface.co/spaces/elprofessor-15/financial-intelligence-agent)**
+**[Try the Live Financial Intelligence Agent Now →](https://huggingface.co/spaces/elprofessor15/financial-intelligence-agent)**
 
 </div>
 
