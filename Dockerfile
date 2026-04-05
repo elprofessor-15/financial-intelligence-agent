@@ -9,14 +9,35 @@ RUN apt-get update && apt-get install -y \
     g++ \
     && rm -rf /var/lib/apt/lists/*
 
-RUN pip install --upgrade pip
+RUN pip install --upgrade pip setuptools wheel
 
 COPY requirements.txt .
-RUN pip install -r requirements.txt
 
-COPY . .
+RUN pip install --no-cache-dir \
+    fastapi \
+    uvicorn \
+    python-dotenv \
+    pydantic \
+    requests \
+    pandas \
+    numpy \
+    tqdm \
+    rich \
+    chromadb \
+    sentence-transformers \
+    rank-bm25 \
+    yfinance \
+    httpx \
+    anthropic \
+    cerebras-cloud-sdk \
+    langchain \
+    langchain-groq \
+    langchain-core
 
 RUN mkdir -p data/processed data/embeddings/chroma data/raw evaluation/results
+RUN mkdir -p src/ingestion src/retrieval src/agents src/evaluation src/observability src/api
+
+COPY . .
 
 RUN python main.py ingest
 
