@@ -8,7 +8,15 @@ app_port: 7860
 pinned: false
 ---
 
+<div align="center">
+
 # Financial Intelligence Agent
+
+**🚀 Live & Fully Usable Agent**
+
+**[Try the Live Financial Intelligence Agent Now →](https://huggingface.co/spaces/elprofessor-15/financial-intelligence-agent)**
+
+</div>
 
 > A production-grade multi-agent RAG system for answering complex financial queries over 100,000+ document chunks from SEC 10-K filings and stock price data.
 
