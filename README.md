@@ -153,7 +153,7 @@ financial-intelligence-agent/
 ### 1. Clone the repository
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/financial-intelligence-agent.git
+git clone https://github.com/elprofessor-15/financial-intelligence-agent.git
 cd financial-intelligence-agent
 ```
 
