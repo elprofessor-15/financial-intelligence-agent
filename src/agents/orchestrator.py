@@ -1,8 +1,14 @@
+"""
+src/agents/orchestrator.py
+Main agent coordinator with guardrail check at entry point.
+"""
+
 from rich.console import Console
 from src.agents.planner import PlannerAgent
 from src.agents.retriever_agent import RetrieverAgent
 from src.agents.analyst import AnalystAgent
 from src.agents.critic import CriticAgent
+from src.agents.guardrails import check_query
 from src.retrieval.hybrid_retriever import HybridRetriever
 from src.observability.logger import AgentLogger
 
@@ -25,6 +31,20 @@ class FinancialAgentOrchestrator:
         self.logger.log_query(query)
         console.print(f"\n[bold blue]Query:[/bold blue] {query}")
 
+        # Guardrail check before anything else
+        guard = check_query(query)
+        if not guard["allowed"]:
+            console.print(f"[bold red]Guardrail triggered:[/bold red] {guard['reason']}")
+            self.logger.log_decision("guardrail", query, {"blocked": True, "reason": guard["reason"]})
+            return {
+                "query": query,
+                "answer": guard["reason"],
+                "sources": [],
+                "quality_score": 0.0,
+                "doc_count": 0,
+                "blocked": True,
+            }
+
         console.print("[cyan]Planning...[/cyan]")
         plan = self.planner.plan(query)
         console.print(f"  Tickers: {plan.get('tickers', [])}")
@@ -32,7 +52,7 @@ class FinancialAgentOrchestrator:
         console.print(f"  Complexity: {plan.get('complexity')}")
 
         for attempt in range(max_retries):
-            console.print(f"[cyan]Retrieving (attempt {attempt+1})...[/cyan]")
+            console.print(f"[cyan]Retrieving (attempt {attempt + 1})...[/cyan]")
             retrieval = self.retriever_agent.retrieve(plan)
             console.print(f"  Retrieved {retrieval['doc_count']} unique documents")
 
@@ -53,6 +73,7 @@ class FinancialAgentOrchestrator:
                     "quality_score": critique["quality_score"],
                     "plan": plan,
                     "doc_count": retrieval["doc_count"],
+                    "blocked": False,
                 }
                 self.logger.log_final(result)
                 return result
@@ -64,4 +85,7 @@ class FinancialAgentOrchestrator:
             "query": query,
             "answer": "Could not generate a sufficient answer after retries.",
             "sources": [],
+            "quality_score": 0.0,
+            "doc_count": 0,
+            "blocked": False,
         }

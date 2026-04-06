@@ -608,7 +608,14 @@ async function rq(){
     document.getElementById('rp-t').textContent='Analysis — '+(q.length>55?q.slice(0,55)+'…':q);
     document.getElementById('rq-q').textContent='Quality '+(data.quality_score*100).toFixed(0)+'%';
     document.getElementById('rq-d').textContent=data.doc_count+' docs';
-    document.getElementById('rp-ans').textContent=data.answer;
+    if (data.blocked) {
+        document.getElementById('rp-t').textContent = 'Query Blocked';
+        document.getElementById('rp-ans').style.color = 'var(--red)';
+    } else {
+        document.getElementById('rp-t').textContent = 'Analysis — '+(q.length>55?q.slice(0,55)+'...':q);
+        document.getElementById('rp-ans').style.color = 'var(--text)';
+    }
+    document.getElementById('rp-ans').textContent = data.answer;
     const se2=document.getElementById('rp-srcs'); se2.innerHTML='';
     (data.sources||[]).forEach(s=>{const t=document.createElement('span');t.className='stag';t.textContent=s;se2.appendChild(t);});
     document.getElementById('rp').style.display='block';
@@ -738,6 +745,7 @@ class QueryResponse(BaseModel):
     sources: list
     quality_score: float
     doc_count: int
+    blocked: bool = False
 
 
 class SearchRequest(BaseModel):
@@ -762,6 +770,7 @@ async def query_endpoint(req: QueryRequest):
         sources=result.get("sources", []),
         quality_score=result.get("quality_score", 0.0),
         doc_count=result.get("doc_count", 0),
+        blocked=result.get("blocked", False),
     )
 
 
