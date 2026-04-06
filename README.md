@@ -311,6 +311,24 @@ User Query
 
 ---
 
+## Guardrails & Safety Mechanisms
+
+To ensure reliable and responsible outputs, the following guardrails have been implemented:
+
+- **Critic Agent**: A dedicated quality-control agent that evaluates every final answer. It assigns a quality score (0.0–1.0) and checks for sufficiency, factual consistency, and completeness. If the score is below 0.6, the system automatically triggers a retry with a refined query.
+  
+- **Structured Prompting**: All LLM calls (Planner, Analyst, Critic) use strict system prompts that instruct the model to be analytical, cite sources, avoid speculation, and return only valid JSON where required. This reduces hallucinations and improves reliability.
+
+- **Source Citation**: Every generated answer explicitly lists the retrieved sources (ticker + section) so users can verify the information.
+
+- **Context Length Control**: Document context is truncated to safe limits (~6000 characters) before being sent to the LLM to prevent overflow and degraded performance.
+
+- **Input Validation**: The FastAPI endpoint validates user queries and rejects empty or malformed requests.
+
+These guardrails significantly improve answer quality, reduce risky hallucinations, and make the system more trustworthy for financial analysis use cases.
+
+---
+
 ## Evaluation Results
 
 Run `python -m src.evaluation.eval` to generate fresh metrics.
