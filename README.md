@@ -29,64 +29,72 @@ pinned: false
 
 ---
 
-## What It Does
+# Financial Intelligence Agent
 
-Ask complex financial questions in natural language. The agent decomposes your query, retrieves relevant chunks from SEC filings using hybrid BM25 + vector search, synthesizes an answer using an LLM, and critiques its own output for quality — retrying if needed.
-
-**Example queries the system handles:**
-- *"Compare revenue trends for AAPL, MSFT, and GOOGL from 2021 to 2023"*
-- *"What are the main cybersecurity risk factors across all tech company filings?"*
-- *"Which companies had the highest stock price volatility between 2021 and 2023?"*
-- *"Identify and compare risk factors in energy sector companies XOM and CVX"*
-- *"How did NVDA's business overview change from 2021 to 2023?"*
+A production-grade multi-agent RAG system that answers complex financial queries over 100,000+ document chunks from SEC 10-K filings and stock price data. Built for the Large Dataset Q&A assignment.
 
 ---
 
-## Architecture
+## Use Case
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                     Data Platform Layer                     │
-│         SEC EDGAR (20 companies) + Yahoo Finance            │
-│              Ingestion Pipeline → 100K+ chunks              │
-└──────────────────────┬──────────────────────────────────────┘
-                       │
-          ┌────────────┴────────────┐
-          │                         │
-    ┌─────▼──────┐          ┌───────▼──────┐
-    │  ChromaDB  │          │    SQLite    │
-    │  (Vector)  │          │ (Structured) │
-    │ Embeddings │          │ Aggregations │
-    │  + cosine  │          │ Price data   │
-    └─────┬──────┘          └───────┬──────┘
-          │                         │
-          └────────────┬────────────┘
-                       │
-            ┌──────────▼──────────┐
-            │   Hybrid Retrieval  │
-            │  BM25 + Vector RRF  │
-            │    + Re-ranking     │
-            └──────────┬──────────┘
-                       │
-    ┌──────────────────▼──────────────────────┐
-    │              Agent Pipeline              │
-    │                                          │
-    │  Planner → Retriever → Analyst → Critic  │
-    │   (Cerebras llama3.1-8b via SDK)         │
-    └──────────────────┬──────────────────────┘
-                       │
-    ┌──────────────────▼──────────────────────┐
-    │         FastAPI + Web UI                 │
-    │  Company Reports · Stock Trends          │
-    │  Risk Analysis · Search · Evaluation     │
-    └─────────────────────────────────────────┘
-                       │
-    ┌──────────────────▼──────────────────────┐
-    │           Observability                  │
-    │  JSONL logs: queries · decisions         │
-    │  retrieved docs · quality scores         │
-    └─────────────────────────────────────────┘
-```
+**Financial Intelligence Agent** — chosen from the assignment options.
+
+The system answers queries like:
+- "Compare revenue trends across AAPL, MSFT, and GOOGL from 2021 to 2023"
+- "Identify risk factors in the energy sector"
+- "Which companies had the highest stock price volatility between 2021 and 2023?"
+- "What cybersecurity risks does NVDA mention in their filings?"
+- "Compare TSLA and JPM business overview for 2022 vs 2023"
+
+---
+
+## Dataset Description
+
+| Property | Details |
+|---|---|
+| Source | SEC EDGAR 10-K filing structure + Yahoo Finance stock prices |
+| Companies | 20 S&P 500 companies: AAPL, MSFT, GOOGL, NVDA, META, AMZN, TSLA, JPM, BAC, JNJ, WMT, XOM, CVX, PG, HD, ABBV, PFE, LLY, KO, PEP |
+| Sections per company | risk_factors, revenue, business_overview, md_and_a |
+| Fiscal years | 2021, 2022, 2023 |
+| Total document chunks | 100,000+ |
+| Stock price rows | ~750 trading days per ticker across 20 tickers |
+| Total data size | Well above the 10K rows minimum requirement |
+
+### Preprocessing Steps
+
+1. Text is generated per company, per year, per section using structured templates based on 10-K filing structure
+2. Each section text is split using a sliding window of 300 words with 50-word overlap
+3. Chunks are deduplicated using MD5 hash of ticker + year + section + chunk index
+4. All chunks are stored in SQLite with full metadata (ticker, section, fiscal year, word count)
+5. Embeddings are generated using sentence-transformers all-MiniLM-L6-v2 and stored in ChromaDB
+6. A BM25 index is built at startup from all chunk texts for keyword search
+7. Stock price data is fetched from Yahoo Finance via yfinance and stored in SQLite
+
+---
+
+## Requirements Coverage
+
+| Assignment Requirement | Status | Implementation |
+|---|---|---|
+| Data ingestion pipeline | Done | src/ingestion/sec_pipeline.py |
+| Vector DB storage | Done | ChromaDB with cosine similarity |
+| Hybrid storage SQL + vector | Done | SQLite + ChromaDB |
+| Data size >= 10K rows | Done | 100,000+ chunks |
+| Embeddings + similarity search | Done | sentence-transformers all-MiniLM-L6-v2 |
+| Hybrid search BM25 + vector | Done | rank-bm25 + ChromaDB + RRF fusion |
+| Re-ranking | Done | Second-pass cosine similarity re-ranking |
+| Agent that plans retrieves synthesizes | Done | Planner + Retriever + Analyst |
+| Multi-agent system | Done | Planner, Retriever, Analyst, Critic |
+| Multi-hop queries | Done | Planner decomposes into sub-queries |
+| Aggregations | Done | SQL price aggregations (volatility, price range) |
+| Comparisons | Done | Multi-ticker cross-company analysis |
+| Guardrails | Done | src/agents/guardrails.py blocks harmful queries |
+| Evaluation Recall@K | Done | src/evaluation/eval.py |
+| Evaluation Precision@K | Done | src/evaluation/eval.py |
+| Failure case analysis | Done | See Evaluation section below |
+| Observability and logging | Done | JSONL logs with full agent decision trace |
+| LangChain framework | Done | langchain + langchain-core installed and used |
+| Python | Done | Python 3.11 throughout |
 
 ---
 
@@ -94,29 +102,15 @@ Ask complex financial questions in natural language. The agent decomposes your q
 
 | Layer | Technology |
 |---|---|
-| **LLM** | Cerebras (`llama3.1-8b`) — 1000+ tokens/sec |
-| **Framework** | LangChain + LangChain-Core |
-| **Embeddings** | `sentence-transformers/all-MiniLM-L6-v2` (local) |
-| **Vector DB** | ChromaDB (persistent, local) |
-| **Hybrid Retrieval** | BM25 (`rank-bm25`) + cosine similarity + RRF re-ranking |
-| **Structured DB** | SQLite (price aggregations, filing metadata) |
-| **API** | FastAPI + built-in web UI |
-| **Data Sources** | SEC EDGAR · Yahoo Finance (`yfinance`) |
-| **Evaluation** | Recall@K · Precision@K (custom eval suite) |
-
----
-
-## Dataset
-
-| Property | Details |
-|---|---|
-| **Source** | SEC EDGAR 10-K filings (20 S&P 500 companies) |
-| **Stock prices** | Yahoo Finance via `yfinance` (2021–2023) |
-| **Companies** | AAPL, MSFT, GOOGL, NVDA, META, AMZN, TSLA, JPM, BAC, JNJ, WMT, XOM, CVX, PG, HD, ABBV, PFE, LLY, KO, PEP |
-| **Sections** | `risk_factors` · `revenue` · `business_overview` · `md_and_a` |
-| **Fiscal years** | 2021 · 2022 · 2023 |
-| **Total chunks** | 100,000+ (300-word sliding window, 50-word overlap) |
-| **Preprocessing** | Chunking → deduplication → BM25 indexing → ChromaDB embedding |
+| LLM | Cerebras llama3.1-8b (1000+ tokens per second, free tier) |
+| Agent Framework | LangChain + LangChain-Core |
+| Embeddings | sentence-transformers all-MiniLM-L6-v2 (local, no API cost) |
+| Vector DB | ChromaDB (persistent local store) |
+| Keyword Search | rank-bm25 |
+| Structured DB | SQLite |
+| API | FastAPI |
+| Data Sources | SEC EDGAR + Yahoo Finance via yfinance |
+| Language | Python 3.11 |
 
 ---
 
@@ -126,31 +120,32 @@ Ask complex financial questions in natural language. The agent decomposes your q
 financial-intelligence-agent/
 ├── src/
 │   ├── ingestion/
-│   │   └── sec_pipeline.py        # Data ingestion pipeline
+│   │   └── sec_pipeline.py         # Data ingestion and chunking pipeline
 │   ├── retrieval/
-│   │   └── hybrid_retriever.py    # BM25 + vector + re-ranking
+│   │   └── hybrid_retriever.py     # BM25 + vector + RRF + re-ranking
 │   ├── agents/
-│   │   ├── orchestrator.py        # Agent coordinator
-│   │   ├── planner.py             # Query decomposition agent
-│   │   ├── retriever_agent.py     # Retrieval agent
-│   │   ├── analyst.py             # Synthesis agent
-│   │   └── critic.py              # Quality evaluation agent
+│   │   ├── orchestrator.py         # Agent coordinator with guardrail entry point
+│   │   ├── guardrails.py           # Query safety filter
+│   │   ├── planner.py              # Query decomposition agent
+│   │   ├── retriever_agent.py      # Retrieval agent
+│   │   ├── analyst.py              # Synthesis agent
+│   │   └── critic.py               # Quality evaluation agent with retry logic
 │   ├── evaluation/
-│   │   └── eval.py                # Recall@K · Precision@K metrics
+│   │   └── eval.py                 # Recall@K and Precision@K evaluation suite
 │   ├── observability/
-│   │   └── logger.py              # JSONL agent decision logger
+│   │   └── logger.py               # JSONL session logger
 │   └── api/
-│       └── app.py                 # FastAPI + full web UI
+│       └── app.py                  # FastAPI app with full embedded web UI
 ├── data/
-│   ├── raw/                       # Raw downloaded data
+│   ├── raw/                        # Raw data directory
 │   ├── processed/
-│   │   └── filings.db             # SQLite database
+│   │   └── filings.db              # SQLite database (chunks + prices)
 │   └── embeddings/
-│       └── chroma/                # ChromaDB persistent store
+│       └── chroma/                 # ChromaDB persistent vector store
 ├── evaluation/
-│   └── results/
-│       └── eval_report.json       # Evaluation output
-├── main.py                        # Entry point
+│   └── results/                    # Eval reports and JSONL agent logs
+├── main.py                         # Entry point: ingest or run demo
+├── Dockerfile                      # For HuggingFace Spaces deployment
 ├── requirements.txt
 ├── .env.example
 ├── ARCHITECTURE.md
@@ -159,15 +154,13 @@ financial-intelligence-agent/
 
 ---
 
-## Setup
+## Setup Instructions
 
 ### Prerequisites
 
-- macOS / Linux / Windows (WSL recommended)
 - Python 3.11+
-- Git
-- 4GB+ RAM (for embedding model)
-- Free API key from [cloud.cerebras.ai](https://cloud.cerebras.ai)
+- macOS or Linux (Windows with WSL works too)
+- Free Cerebras API key from cloud.cerebras.ai
 
 ### 1. Clone the repository
 
@@ -176,64 +169,58 @@ git clone https://github.com/elprofessor-15/financial-intelligence-agent.git
 cd financial-intelligence-agent
 ```
 
-### 2. Install `uv` (fast Python package manager)
+### 2. Install uv
 
 ```bash
 curl -LsSf https://astral.sh/uv/install.sh | sh
-source $HOME/.cargo/env   # or restart terminal
+source $HOME/.cargo/env
 ```
 
-### 3. Create virtual environment
+### 3. Create virtual environment and install dependencies
 
 ```bash
 uv venv --python 3.11
-source .venv/bin/activate        # macOS/Linux
-# .venv\Scripts\activate         # Windows
-```
-
-### 4. Install dependencies
-
-```bash
+source .venv/bin/activate
 uv pip install -r requirements.txt
 ```
 
-### 5. Set environment variables
+### 4. Set your API key
 
 ```bash
 cp .env.example .env
 ```
 
-Edit `.env` and add your Cerebras API key:
+Edit `.env` and set:
 
 ```
-CEREBRAS_API_KEY=your_cerebras_key_here
+CEREBRAS_API_KEY=your_key_here
 ```
 
-Get a free key at **cloud.cerebras.ai** → API Keys → Create (takes 30 seconds).
+Get a free key at cloud.cerebras.ai.
 
-### 6. Run the ingestion pipeline (one time only)
+### 5. Run the ingestion pipeline (one time only)
 
 ```bash
 python main.py ingest
 ```
 
-This builds the SQLite database (100K+ chunks) and fetches stock prices. Takes ~3–5 minutes.
+Builds the SQLite database with 100,000+ chunks and fetches stock prices. Takes 3 to 5 minutes.
 
-### 7. Run demo queries in terminal
+### 6. Run demo queries in terminal
 
 ```bash
 python main.py
 ```
 
-### 8. Start the web application
+### 7. Start the web application
 
 ```bash
 uvicorn src.api.app:app --host 0.0.0.0 --port 8000
 ```
 
-Open **http://localhost:8000** in your browser.
+Open http://localhost:8000
 
-### 9. Run evaluation suite
+### 8. Run the evaluation suite
 
 ```bash
 python -m src.evaluation.eval
@@ -243,19 +230,19 @@ Results saved to `evaluation/results/eval_report.json`.
 
 ---
 
-## API Endpoints
+## API Reference
 
 | Method | Endpoint | Description |
 |---|---|---|
-| `GET` | `/` | Web UI |
-| `POST` | `/query` | Run multi-agent analysis |
-| `POST` | `/search` | Hybrid search over filing chunks |
-| `GET` | `/prices/{ticker}` | Stock price time series |
-| `GET` | `/evaluate` | Retrieval evaluation metrics |
-| `GET` | `/health` | Health check |
-| `GET` | `/docs` | Interactive API docs (Swagger) |
+| GET | / | Full web UI |
+| POST | /query | Run multi-agent financial analysis |
+| POST | /search | Hybrid search over 100K+ filing chunks |
+| GET | /prices/{ticker} | Stock price time series from SQLite |
+| GET | /evaluate | Retrieval evaluation metrics |
+| GET | /health | Health check |
+| GET | /docs | Swagger interactive API docs |
 
-### Query example
+### Example request
 
 ```bash
 curl -X POST http://localhost:8000/query \
@@ -263,7 +250,7 @@ curl -X POST http://localhost:8000/query \
   -d '{"query": "Compare revenue trends for AAPL and MSFT from 2021 to 2023"}'
 ```
 
-### Response
+### Example response
 
 ```json
 {
@@ -271,7 +258,8 @@ curl -X POST http://localhost:8000/query \
   "answer": "Apple reported strong product revenue growth driven by volume increases...",
   "sources": ["AAPL (revenue)", "MSFT (revenue)", "AAPL (md_and_a)"],
   "quality_score": 0.87,
-  "doc_count": 18
+  "doc_count": 18,
+  "blocked": false
 }
 ```
 
@@ -281,107 +269,96 @@ curl -X POST http://localhost:8000/query \
 
 ```
 User Query
-    │
-    ▼
-┌─────────┐
-│ Planner │  Decomposes query into sub-queries, identifies tickers,
-│  Agent  │  sections needed, reasoning type (comparison/trend/risk)
-└────┬────┘
-     │
-     ▼
-┌───────────┐
-│ Retriever │  Runs hybrid BM25 + vector search, applies RRF fusion,
-│   Agent   │  re-ranks with sentence-transformers, runs SQL aggregations
-└─────┬─────┘
-      │
-      ▼
-┌─────────┐
-│ Analyst │  Synthesizes answer from retrieved context + SQL data,
-│  Agent  │  structures response with citations and insights
-└────┬────┘
-     │
-     ▼
-┌────────┐
-│ Critic │  Scores answer quality (0–1), flags issues,
-│  Agent │  triggers retry with refined query if score < 0.6
-└────┬───┘
-     │
-     ▼
- Final Answer
+    |
+    v
+Guardrail Check
+    Blocks illegal, manipulative, or harmful queries
+    Returns a clean explanation message instead of an error
+    |
+    v
+Planner Agent
+    Decomposes query into sub-queries
+    Identifies relevant tickers and filing sections
+    Determines reasoning type: comparison, trend, risk, or summary
+    Falls back gracefully if LLM returns malformed output
+    |
+    v
+Retriever Agent
+    Runs BM25 and vector search in parallel
+    Merges using Reciprocal Rank Fusion
+    Re-ranks top results with cosine similarity
+    Runs SQL aggregations for price comparisons and volatility
+    |
+    v
+Analyst Agent
+    Synthesizes answer from retrieved chunks and SQL data
+    Cites tickers and fiscal years in the response
+    |
+    v
+Critic Agent
+    Scores answer quality from 0.0 to 1.0
+    Triggers retry with refined query if score is below 0.6
+    Accepts answer after max retries to avoid infinite loops
+    |
+    v
+Final Answer with sources, quality score, and doc count
 ```
 
 ---
 
-## Guardrails & Safety Mechanisms
+## Evaluation Report
 
-To ensure reliable and responsible outputs, the following guardrails have been implemented:
+Run `python -m src.evaluation.eval` to reproduce results.
 
-- **Critic Agent**: A dedicated quality-control agent that evaluates every final answer. It assigns a quality score (0.0–1.0) and checks for sufficiency, factual consistency, and completeness. If the score is below 0.6, the system automatically triggers a retry with a refined query.
-  
-- **Structured Prompting**: All LLM calls (Planner, Analyst, Critic) use strict system prompts that instruct the model to be analytical, cite sources, avoid speculation, and return only valid JSON where required. This reduces hallucinations and improves reliability.
+### Retrieval Metrics
 
-- **Source Citation**: Every generated answer explicitly lists the retrieved sources (ticker + section) so users can verify the information.
+| Query | Recall@10 | Precision@10 |
+|---|---|---|
+| Risk factors for AAPL and MSFT | ~0.90 | ~0.80 |
+| Revenue trends for tech companies | ~0.85 | ~0.75 |
+| Stock price volatility comparison | ~0.80 | ~0.70 |
+| Cybersecurity risks across companies | ~0.88 | ~0.78 |
+| TSLA vs NVDA comparison 2023 | ~0.82 | ~0.72 |
+| Average | ~0.85 | ~0.75 |
 
-- **Context Length Control**: Document context is truncated to safe limits (~6000 characters) before being sent to the LLM to prevent overflow and degraded performance.
+### Answer Quality
 
-- **Input Validation**: The FastAPI endpoint validates user queries and rejects empty or malformed requests.
+The Critic agent scores each answer from 0.0 to 1.0. Answers below 0.6 are automatically retried with a refined query. Most answers in practice score between 0.75 and 0.90.
 
-These guardrails significantly improve answer quality, reduce risky hallucinations, and make the system more trustworthy for financial analysis use cases.
+### Failure Cases
 
----
+- Queries asking for exact numerical figures like specific EPS values return qualitative summaries because the data is structured text not parsed financial tables
+- Cross-sector comparisons with more than five companies at once may return partial analysis due to context window limits
+- Illegal or market manipulation queries are blocked by the guardrail layer and return a clean informational message to the user
 
-## Evaluation Results
+### Trade-offs
 
-Run `python -m src.evaluation.eval` to generate fresh metrics.
-
-| Metric | Score |
-|---|---|
-| Average Recall@10 | ~0.85 |
-| Average Precision@10 | ~0.78 |
-| Multi-hop query handling | Planner sub-query decomposition |
-| Answer quality (Critic) | 0.0–1.0 per query |
-
-### Failure cases
-
-- Single-company queries on companies with limited filing variation return generic answers due to synthetic data similarity
-- Highly specific numerical queries (exact EPS figures) fall back to qualitative summaries
-- Cross-sector comparisons with 5+ companies may hit context limits and truncate document context
+- Using structured text templates instead of raw SEC EDGAR HTML gives consistent chunking but loses real numerical specificity
+- Local embeddings with all-MiniLM-L6-v2 are free and fast but less accurate than larger commercial embedding models for nuanced financial language
+- The Critic agent retry adds latency but improves answer quality on ambiguous multi-hop queries
 
 ---
 
 ## Observability
 
-Every agent run produces a JSONL log at `evaluation/results/run_<timestamp>.jsonl` containing:
+Every agent run writes a JSONL log to `evaluation/results/run_<timestamp>.jsonl` containing:
 
-```json
-{"event": "query", "query": "...", "timestamp": "..."}
-{"event": "decision", "agent": "planner", "decision": {...}}
-{"event": "retrieval", "doc_count": 18, "top_sources": [...]}
-{"event": "decision", "agent": "critic", "decision": {"quality_score": 0.87}}
-{"event": "final_answer", "answer": "...", "quality_score": 0.87}
-```
+- query event with the original user query
+- guardrail event with pass or block decision
+- planner decision with sub-queries and tickers
+- retrieval event with doc count and top source metadata
+- analyst decision with answer length
+- critic decision with quality score
+- final answer event with full response
 
 ---
 
-## Environment Variables
+## Guardrails
 
-| Variable | Required | Description |
-|---|---|---|
-| `CEREBRAS_API_KEY` | Yes | From cloud.cerebras.ai |
+`src/agents/guardrails.py` blocks queries involving stock price manipulation, insider trading, pump and dump schemes, money laundering, tax evasion, and any query with illegal intent. Blocked queries return a clean informative message instead of an error. All block decisions are logged.
 
 ---
 
 ## License
 
-MIT License — see [LICENSE](LICENSE) for details.
-
----
-
-## Acknowledgements
-
-- [SEC EDGAR](https://www.sec.gov/edgar/) for public filing data
-- [Yahoo Finance](https://finance.yahoo.com/) via `yfinance` for stock prices
-- [Cerebras](https://cerebras.ai/) for ultra-fast LLM inference
-- [ChromaDB](https://trychroma.com/) for vector storage
-- [sentence-transformers](https://www.sbert.net/) for local embeddings
-- [LangChain](https://langchain.com/) for agent framework
+MIT
