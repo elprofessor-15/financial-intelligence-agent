@@ -14,8 +14,9 @@ pinned: false
 
 **🚀 Live & Fully Usable Agent**
 
-**[Try the Live Financial Intelligence Agent Now →](https://huggingface.co/spaces/elprofessor15/financial-intelligence-agent)**
 
+- **Live Application**: [https://elprofessor15-financial-intelligence-agent.hf.space](https://elprofessor15-financial-intelligence-agent.hf.space)
+- **Video Demo**: [Watch the Demo Video](https://drive.google.com/file/d/17QHCD66n7U2tGP9mNhr6HON61Xh_Dur-/view?usp=sharing)
 </div>
 
 > A production-grade multi-agent RAG system for answering complex financial queries over 100,000+ document chunks from SEC 10-K filings and stock price data.
