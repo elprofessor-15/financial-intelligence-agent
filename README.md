@@ -15,7 +15,7 @@ pinned: false
 **🚀 Live & Fully Usable Agent**
 
 
-- **Live Application**: [https://elprofessor15-financial-intelligence-agent.hf.space](https://elprofessor15-financial-intelligence-agent.hf.space)
+- **Live Application**: [https://huggingface.co/spaces/elprofessor-15/financial-intelligence-agent](https://huggingface.co/spaces/elprofessor-15/financial-intelligence-agent)
 - **Video Demo**: [Watch the Demo Video](https://drive.google.com/file/d/17QHCD66n7U2tGP9mNhr6HON61Xh_Dur-/view?usp=sharing)
 </div>
 
